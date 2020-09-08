@@ -2,6 +2,7 @@
 A simple model that generates scenario based projections (aka forecasts) for grid-delivered electricity. Wrapped in a Shiny app. See this link to use the app: https://coble-neal.shinyapps.io/DemandForecaster/ 
 
 To do list:
+
 ~~- Adjust the E_auto slider to better match the initial level of demand. ~~
 - Add sliders for maximum penetration ratios of solar PVs and EVs as a proportion of total houses.
 - Add commercial and industrial demand for electricity.
