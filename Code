@@ -23,6 +23,7 @@ ui <- fluidPage(
         sliderInput("gr_price", "Grid-delivered electricity price growth rate:", min = -10, max = 10, value = 2, post = " %"),
         sliderInput("gr_gdp", "Economic growth rate:", min = -10, max = 10, value = 2.5, post = " %"),
         hr(),
+        sliderInput("t0_auto", "Initial autonomous demand for electricity (TWh)", 0, 25, 18),
         sliderInput("t0_pop", "Initial population (millions)", 0, 4, 2.5),
         sliderInput("t0_pv", "Initial solar PV installed base (millions)", 0, 4, 2.5),
         sliderInput("t0_ev", "Initial EV installed base ('000s)", 0, 1000, 1),
@@ -38,14 +39,15 @@ ui <- fluidPage(
         sliderInput("t0_household_occupancy", "Average persons per household", 0, 25, 2.6),
         sliderInput("t0_pv_pen_ratio", "Ratio of homes with solar PV to total homes", 0, 1, 0.3),
         sliderInput("t0_ev_pen_ratio", "Ratio of homes with EV to total homes", 0, 1, 0.3),
-        sliderInput("E_auto", "Autonomous demand for electricity", 0, 1, 0.1),
+        
         sliderInput("forecast_horizon", "Forecast horizon (years)", 5, 100, 50)
       ),
       
       # Show a plot of the generated distribution
       mainPanel(
          
-         #tableOutput("demand_drivers_table"),
+         #tableOutput("table_demand_drivers"),
+         #tableOutput("table_demand"),
          plotOutput("Plot_Demand"),
          plotOutput("Plot_Drivers")
       )
@@ -56,27 +58,29 @@ ui <- fluidPage(
 server <- function(input, output) {
 
  m <- reactive({  # create a dataframe containing naive forecasts for each demand driver
-   growth <- matrix(0, nrow=1, ncol=5)
-   growth[1,1] <- (input$gr_pop)/100+1
-   growth[1,2] <- ( (input$gr_pv)/100+1 ) 
-   growth[1,3] <- (input$gr_ev)/100+1
-   growth[1,4] <- (input$gr_price)/100+1
-   growth[1,5] <- (input$gr_gdp)/100+1
+   growth <- matrix(0, nrow=1, ncol=6)
+   growth[1,1] <- 1
+   growth[1,2] <- (input$gr_pop)/100+1
+   growth[1,3] <- ( (input$gr_pv)/100+1 ) 
+   growth[1,4] <- (input$gr_ev)/100+1
+   growth[1,5] <- (input$gr_price)/100+1
+   growth[1,6] <- (input$gr_gdp)/100+1
    
-   base <- matrix(0, nrow=1, ncol=5)
-   base[1,1] <- input$t0_pop
-   base[1,2] <- input$t0_pv
-   base[1,3] <- input$t0_ev
-   base[1,4] <- input$t0_price/100
-   base[1,5] <- input$t0_gdp
+   base <- matrix(0, nrow=1, ncol=6)
+   base[1,1] <- input$t0_auto
+   base[1,2] <- input$t0_pop
+   base[1,3] <- input$t0_pv
+   base[1,4] <- input$t0_ev
+   base[1,5] <- input$t0_price/100
+   base[1,6] <- input$t0_gdp
    
    m <- matrix(1, nrow = input$forecast_horizon, ncol = ncol(base))
    m[1,] <- base
    for(i in 2:input$forecast_horizon){
      m[i,] <-  m[i-1,] * growth
    }
-   m <- cbind(seq.int(nrow(m)), m)
-   colnames(m) <- c("Index", "pop", "pv", "ev", "price", "gdp")
+   
+   colnames(m) <- c("auto", "pop", "pv", "ev", "price", "gdp")
    m <- as.data.frame(m)
    return(m)
  }) 
@@ -110,26 +114,28 @@ server <- function(input, output) {
    m_4$house <- house_number()
    m_4$pv <- solar_pv()
    m_4$ev <- ev()
-   
-   m_4 <- m_4[, c("Index","house", "pv", "ev", "price", "gdp")]
+   m_4$Index <- seq.int(1:nrow(m_4))
+   m_4 <- m_4[, c("Index", "auto" ,"house", "pv", "ev", "price", "gdp")]
    return(m_4)
  })
  
- output$demand_drivers_table <- renderTable({
+ output$table_demand_drivers <- renderTable({
    demand_drivers()
  })
  
- # create demand forecast based on the input drivers
- output$Plot_Demand <- renderPlot({
+ # calculate the demand forecast based on the input drivers
+ Q <- reactive({
    E <- matrix (0,nrow = 1, ncol = 6)
-   E[1,1] <- input$E_auto
+   E[1,1] <- 1
    E[1,2] <- input$E_house
    E[1,3] <- input$E_pv
    E[1,4] <- input$E_ev
    E[1,5] <- input$E_price
    E[1,6] <- input$E_gdp
    
-   Q <- log(as.matrix(demand_drivers()))
+   dd <- demand_drivers()
+   dd <- dd[, -1]
+   Q <- log(as.matrix(dd))
    
    Q <- Q %*% t(E)
    Q <- exp(Q)
@@ -137,7 +143,15 @@ server <- function(input, output) {
    
    colnames(Q) <- c("Years", "Demand")
    Q <- as.data.frame(Q)
-   Plot_Demand <- ggplot(Q, aes(x = Years)) + ggtitle("Demand for grid-delivered electricity") + xlab("Forecast timeframe")
+ })
+ output$table_demand <- renderTable({
+   Q()
+ })
+ 
+ # Plot the demand 
+ output$Plot_Demand <- renderPlot({
+   Q_ <- Q()
+   Plot_Demand <- ggplot(Q_, aes(x = Years)) + ggtitle("Demand for grid-delivered electricity") + xlab("Forecast timeframe") + ylim(0, max(Q_$Demand))
    Plot_Demand <- Plot_Demand + geom_line(aes(y = Demand, colour = "GWh")) + ylab("GWh")
    return(Plot_Demand)
  })
