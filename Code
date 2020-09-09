@@ -6,6 +6,8 @@ library(ggplot2)
 
 library(shiny)
 
+source("logisticFunction.R")
+
 # Define UI for application that creates a forecast
 ui <- fluidPage(
    
@@ -18,27 +20,29 @@ ui <- fluidPage(
         titlePanel("Demand growth assumptions"),
         hr(),
         sliderInput("gr_pop", "Population growth rate:", min = -10, max = 10, value = 2, post = " %"),
-        sliderInput("gr_pv", "Solar PV penetration growth rate:", min = -10, max = 10, value = 2, post = " %"),
-        sliderInput("gr_ev", "Electric vehicle penetration growth rate:", min = -10, max = 100, value = 25, post = " %"),
+        sliderInput("gr_pv", "Solar PV penetration growth rate:", min = -10, max = 100, value = 20, post = " %"),
+        sliderInput("gr_ev", "Electric vehicle penetration growth rate:", min = -10, max = 100, value = 50, post = " %"),
         sliderInput("gr_price", "Grid-delivered electricity price growth rate:", min = -10, max = 10, value = 2, post = " %"),
-        sliderInput("gr_gdp", "Economic growth rate:", min = -10, max = 10, value = 2.5, post = " %"),
+        sliderInput("gr_gsp", "Economic growth rate:", min = -10, max = 10, value = 2.5, post = " %"),
         hr(),
         sliderInput("t0_auto", "Initial autonomous demand for electricity (TWh)", 0, 25, 18),
         sliderInput("t0_pop", "Initial population (millions)", 0, 4, 2.5),
-        sliderInput("t0_pv", "Initial solar PV installed base (millions)", 0, 4, 2.5),
+        sliderInput("t0_pv", "Initial solar PV installed base ('000s)", 1000, 1000000, 500000),
         sliderInput("t0_ev", "Initial EV installed base ('000s)", 0, 1000, 1),
         sliderInput("t0_price", "Initial electricity price (c/kWh)", 0, 100, 28),
-        sliderInput("t0_gdp", "Initial GDP level ($ billions)", 0, 10, 2),
+        sliderInput("t0_gsp", "Initial Gross State Product level ($ billions)", 10, 150, 100),
         hr(),
         sliderInput("E_house", "Demand elasticity w.r.t. housing", 0, 1, 0.1),
         sliderInput("E_pv", "Demand elasticity w.r.t. solar PV installations", -1, 0, -0.1),
         sliderInput("E_ev", "Demand elasticity w.r.t. electric vehicles", 0, 1, 0.1),
         sliderInput("E_price", "Demand elasticity w.r.t. the retail electricity price", -1, 0, -0.1),
-        sliderInput("E_gdp", "Demand elasticity w.r.t. economic output", 0, 1, 0.1),
+        sliderInput("E_gsp", "Demand elasticity w.r.t. economic output", 0, 1, 0.1),
         hr(),
         sliderInput("t0_household_occupancy", "Average persons per household", 0, 25, 2.6),
-        sliderInput("t0_pv_pen_ratio", "Ratio of homes with solar PV to total homes", 0, 1, 0.3),
-        sliderInput("t0_ev_pen_ratio", "Ratio of homes with EV to total homes", 0, 1, 0.3),
+        
+        sliderInput("tN_pv_pen_ratio", "Eventual ratio of homes with solar PV to total homes", 0, 1, 0.8),
+        
+        sliderInput("tN_ev_pen_ratio", "Eventual ratio of homes with EVs to total homes", 0, 1, 1),
         
         sliderInput("forecast_horizon", "Forecast horizon (years)", 5, 100, 50)
       ),
@@ -46,8 +50,8 @@ ui <- fluidPage(
       # Show a plot of the generated distribution
       mainPanel(
          
-         #tableOutput("table_demand_drivers"),
-         #tableOutput("table_demand"),
+         # tableOutput("table_demand_drivers"),
+         # tableOutput("table_demand"),
          plotOutput("Plot_Demand"),
          plotOutput("Plot_Drivers")
       )
@@ -57,22 +61,23 @@ ui <- fluidPage(
 # Define server logic required to draw a histogram
 server <- function(input, output) {
 
+  
  m <- reactive({  # create a dataframe containing naive forecasts for each demand driver
    growth <- matrix(0, nrow=1, ncol=6)
    growth[1,1] <- 1
    growth[1,2] <- (input$gr_pop)/100+1
-   growth[1,3] <- ( (input$gr_pv)/100+1 ) 
-   growth[1,4] <- (input$gr_ev)/100+1
+   growth[1,3] <- (input$gr_pv)/100+1 
+   growth[1,4] <- (input$gr_ev)/100+1     # this is replaced by ev(), which uses a logistic forecast
    growth[1,5] <- (input$gr_price)/100+1
-   growth[1,6] <- (input$gr_gdp)/100+1
+   growth[1,6] <- (input$gr_gsp)/100+1
    
    base <- matrix(0, nrow=1, ncol=6)
    base[1,1] <- input$t0_auto
    base[1,2] <- input$t0_pop
    base[1,3] <- input$t0_pv
-   base[1,4] <- input$t0_ev
+   base[1,4] <- input$t0_ev              # this is replaced by ev(), which uses a logistic forecast
    base[1,5] <- input$t0_price/100
-   base[1,6] <- input$t0_gdp
+   base[1,6] <- input$t0_gsp
    
    m <- matrix(1, nrow = input$forecast_horizon, ncol = ncol(base))
    m[1,] <- base
@@ -80,7 +85,7 @@ server <- function(input, output) {
      m[i,] <-  m[i-1,] * growth
    }
    
-   colnames(m) <- c("auto", "pop", "pv", "ev", "price", "gdp")
+   colnames(m) <- c("auto", "pop", "pv", "ev", "price", "gsp")
    m <- as.data.frame(m)
    return(m)
  }) 
@@ -94,28 +99,31 @@ server <- function(input, output) {
  
  # calculate the number of solar PV installations
  solar_pv <- reactive({
-   m_2 <- m()
-   pv_pen_ratio_growth_factor <- m_2[,3]
-   house_number() * min( pv_pen_ratio_growth_factor * input$t0_pv_pen_ratio, 1 )
+   
+   n0 = ( input$t0_pv / 1e6 )/ ( input$t0_pop/input$t0_household_occupancy )  # initial ratio of solar PVs to houses
+   p = c(r = input$gr_pv/100, K=input$tN_pv_pen_ratio) # r is the growth rate, K is the carrying capacity, defined as the maximum ratio of EVs to homes
+   house_number() * logistic.2(n0, p, input$forecast_horizon-1)
  })
  
- # calculate the number of electric vehicles
+ # forecast the number of electric vehicles
  ev <- reactive({
-   m_3 <- m()
-   ev_pen_ratio_growth_factor <- m_3[,4]
-   house_number() * min( ev_pen_ratio_growth_factor * input$t0_ev_pen_ratio, 1.5 )
+   
+   n0 = ( input$t0_ev / 1e3 ) / ( input$t0_pop/input$t0_household_occupancy )  # initial ratio of EVs to houses
+   p = c(r = input$gr_ev/100, K=input$tN_ev_pen_ratio) # r is the growth rate, K is the carrying capacity, defined as the maximum ratio of EVs to homes
+   ev <- ( house_number() * logistic.2(n0, p, input$forecast_horizon-1) ) 
+   return(ev)
+   
  })
  
  # create a dataframe of demand driver forecasts
  demand_drivers <- reactive({
    m_4 <- m()
    m_4 <- m_4[, -c(2,3,4)]
-   
    m_4$house <- house_number()
    m_4$pv <- solar_pv()
    m_4$ev <- ev()
    m_4$Index <- seq.int(1:nrow(m_4))
-   m_4 <- m_4[, c("Index", "auto" ,"house", "pv", "ev", "price", "gdp")]
+   m_4 <- m_4[, c("Index", "auto" ,"house", "pv", "ev", "price", "gsp")]
    return(m_4)
  })
  
@@ -131,19 +139,29 @@ server <- function(input, output) {
    E[1,3] <- input$E_pv
    E[1,4] <- input$E_ev
    E[1,5] <- input$E_price
-   E[1,6] <- input$E_gdp
+   E[1,6] <- input$E_gsp 
+   
+   S <- matrix(0, nrow = 1, ncol = 6)
+   S[1,1] <- 0.85
+   S[1,2] <- 1
+   S[1,3] <- 1
+   S[1,4] <- 0.5
+   S[1,5] <- 1
+   S[1,6] <- 1
    
    dd <- demand_drivers()
    dd <- dd[, -1]
    Q <- log(as.matrix(dd))
    
-   Q <- Q %*% t(E)
+   Q <- Q %*% t( E * S )
    Q <- exp(Q)
    Q <- cbind(seq.int(nrow(Q)), Q)
    
    colnames(Q) <- c("Years", "Demand")
    Q <- as.data.frame(Q)
+   return(Q)
  })
+ 
  output$table_demand <- renderTable({
    Q()
  })
@@ -152,22 +170,22 @@ server <- function(input, output) {
  output$Plot_Demand <- renderPlot({
    Q_ <- Q()
    Plot_Demand <- ggplot(Q_, aes(x = Years)) + ggtitle("Demand for grid-delivered electricity") + xlab("Forecast timeframe") + ylim(0, max(Q_$Demand))
-   Plot_Demand <- Plot_Demand + geom_line(aes(y = Demand, colour = "GWh")) + ylab("GWh")
+   Plot_Demand <- Plot_Demand + geom_line(aes(y = Demand)) + ylab("GWh")
    return(Plot_Demand)
  })
   
   output$Plot_Drivers <- renderPlot({
-    pop_gdp <- ggplot(demand_drivers(), aes(x = Index))
-    pop_gdp <- pop_gdp + geom_line(aes(y = house, colour = "Houses (mill.)"))
-    pop_gdp <- pop_gdp + geom_line(aes(y = gdp, colour = "GDP ($ bill.)"))
-    pop_gdp <- pop_gdp + scale_y_continuous(name = "Houses (mill.)", sec.axis=sec_axis(~./2, name="GDP ($ bill.)")  )
-    pop_gdp <- pop_gdp + theme(legend.position = c(0.105, 0.8))
-    pop_gdp <- pop_gdp + ggtitle("Number of households and economic output") + xlab("Forecast timeframe") 
+    
+    gsp <- ggplot(demand_drivers(), aes(x = Index))
+    gsp <- gsp + geom_line(aes(y = gsp)) + ylab("GSP ($ bill.)")
+    gsp <- gsp + ggtitle("Economic output (Gross State Product)") + xlab("Forecast timeframe") 
     pv <- ggplot(demand_drivers(), aes(x=Index, y=pv)) + geom_line() + ggtitle("Solar PV installations") + xlab("Forecast timeframe") + ylab("Installations (mill.)")
+    house <- ggplot(demand_drivers(), aes(x=Index, y=house)) + geom_line() + ggtitle("Number of households") + xlab("Forecast timeframe") + ylab("Houses (mill.)")
+    
     ev <- ggplot(demand_drivers(), aes(x=Index, y=ev)) + geom_line() + ggtitle("Electric vehicles") + xlab("Forecast timeframe") + ylab("Vehicles (mill.)")
     price <- ggplot(demand_drivers(), aes(x=Index, y=price)) + geom_line() + ggtitle("Electricity price") + xlab("Forecast timeframe") + ylab("$/kWh")
     
-    plot_grid(pop_gdp, pv, ev, price, nrow=2)
+    return( plot_grid(gsp, price, house, pv, ev,  ncol = 2) )
 
    })
 }
