@@ -1,0 +1,23 @@
+
+# Objective: simulate a discrete logistic equation
+# Source: http://biom300.weebly.com/logistic-model.html
+
+## Now we can define our function
+logistic = function(n, p) { ## here are just saying that 'disc.logistic' is a function that takes two arguments
+  r = unname(p['r']) ## set the growth rate (dropping the parameter name with 'unname')
+  K = unname(p['K']) ## set the carrying capacity
+  n1 = n + r * n * (1 - n / K) ## calculate the new population size
+  return(n1) ## and return it 
+}
+
+logistic.2 = function(n, p, T) { ## T is the total number of time steps
+  ## Create a new variable that is a vector of length T, so that N[1] is the initial population size (t=0), N[2] is the population size at time t=1, N[3] = pop'n size at t=2, ..., N[T] = pop'n size at t=T-1 and N[T+1] = pop'n size at t=T
+  N = vector(length=T+1)
+  N[1] = n ## set the initial value
+  ## Create a loop that will increment time by one time unit, calculate the new population size, and save it in our vector
+  for (t in 1:T) { 
+    N[t+1] = logistic(N[t], p) ## we can call the function we wrote above to calculate the new population size
+  }
+  return(N) ## return the vector of population sizes
+}
+
