@@ -64,7 +64,7 @@ ui <- fluidPage(
         sliderInput("t0_household_occupancy", "Average persons per household", 0, 25, 2.6),
         sliderInput("t0_cars_per_house", "Average cars per household", 0, 5, 2.6, step = 0.1),
         sliderInput("tN_pv_pen_ratio", "Eventual ratio of homes with solar PV to total homes", 0, 1, 0.8),
-        sliderInput("tN_ev_pen_ratio", "Eventual ratio of homes with EVs to total homes", 0, 1, 1),
+        # sliderInput("tN_ev_pen_ratio", "Eventual ratio of homes with EVs to total homes", 0, 1, 1),
         sliderInput("forecast_horizon", "Forecast horizon (years)", 5, 100, 50)
       ),
       
@@ -174,12 +174,12 @@ server <- function(input, output) {
    pv_kWh() * Q_pv() / 1e6
  })
  
- # calculate the quantity of total solar PV generated electricity exported to the grid
- pv_exports <- reactive({
-   # pv exports = pv output (GWh) x (1 - self-consumption)
+ # calculate the quantity of total solar PV generated electricity consumed to offset grid supply
+ pv_sc <- reactive({
+   # pv exports = pv output (GWh) x self-consumption
    m_2 <- m()
    pvGWh <- pv_GWh()
-   pvGWh * (1 - m_2$pv_sc)
+   pvGWh * m_2$pv_sc
  })
  
  # forecast the quantity of electric vehicles based on relative total cost of ownership of ICEVs to EVs
@@ -209,7 +209,7 @@ server <- function(input, output) {
    COM_GWh <- m_3$COM
    IND_GWh <- m_3$IND
   
-   Q_grid <- ( Q_house_GWh() + COM_GWh + IND_GWh + Q_EV_GWh() - pv_exports() ) 
+   Q_grid <- ( Q_house_GWh() + COM_GWh + IND_GWh + Q_EV_GWh() - pv_sc() ) 
    Q_grid <- cbind(seq.int(nrow(Q_grid)), Q_grid)
    colnames(Q_grid) <- c("Years", "Demand")
    Q_grid <- as.data.frame(Q_grid)
