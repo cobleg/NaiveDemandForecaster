@@ -5,8 +5,9 @@
 #              Q: quantity
 #              _: indicates a subscript
 #              gr: growth rate (year-over-year)
-#              pv: solar photovoltaic generation
-#              ev: electric vehicles
+#              pv: solar photovoltaic electricity generation
+#              ev: electric vehicle
+#              icev: internal combustion engine vehicle
 #
 library(cowplot)
 library(ggplot2)
@@ -27,19 +28,21 @@ ui <- fluidPage(
         titlePanel("Demand growth assumptions"),
         hr(),
         sliderInput("gr_pop", "Population growth rate:", min = -10, max = 10, value = 2, post = " %"),
+        sliderInput("gr_Q_vehicles", "Vehicle stock growth rate:", min = -10, max = 10, value = 1.5, post = " %", step = 0.5),
         sliderInput("gr_P_grid", "Grid-delivered electricity price growth rate:", min = -10, max = 10, value = 2, post = " %"),
-        sliderInput("gr_P_pv", "Solar PV price growth rate:", min = -10, max = 100, value = -10, post = " %"),
+        sliderInput("gr_P_pv", "Solar PV price growth rate:", min = -10, max = 100, value = 0, post = " %"),
         sliderInput("gr_P_ICE", "Internal combustion engine vehicle (ICEV) total cost of ownership (TOC) growth rate", -10, 10, 1.5, post=" %"),
-        sliderInput("gr_P_ev", "Electric vehicle (EV) TOC growth rate:", min = -10, max = 100, value = -5, post = " %"),
+        sliderInput("gr_P_ev", "Electric vehicle (EV) TOC growth rate:", min = -10, max = 100, value = 0, post = " %"),
         sliderInput("gr_gsp", "Economic growth rate:", min = -10, max = 10, value = 2.5, post = " %"),
         sliderInput ("gr_pv_sc", "Average solar PV self-consumption growth rate", 0, 10, 1, post = " %"),
-        sliderInput("gr_pv_capacity", "Average PV system capacity growth rate", 0, 25, 2, post = " %"),
+        sliderInput("gr_pv_capacity", "Average PV system capacity growth rate", 0, 25, 0.5, post = " %", step = 0.5),
         sliderInput("gr_ADMD", "After Diversity Maximum Demand", -10, 10, -1, post = " %"),
         sliderInput("gr_COM", "Total Commercial sector demand growth rate", -10, 10, 1, post = " %"),
         sliderInput("gr_IND", "Total Industrial sector demand growth rate", -10, 10, 1, post = " %"),
         hr(),
-        #sliderInput("t0_auto", "Initial autonomous demand for electricity (TWh)", 0, 25, 18),
-        sliderInput("t0_pop", "Initial population (millions)", 0, 4, 2.5),
+        
+        sliderInput("t0_pop", "Initial population (millions)", 0, 4, 2.5, step = 0.5),
+        sliderInput("t0_Q_vehicles", "Initial vehicle stock (millions)", 0, 4, 2.3, step = 0.5),
         sliderInput("t0_P_grid", "Initial grid electricity price (c/kWh)", 0, 100, 28),
         sliderInput("t0_P_pv", "Initial solar PV levelised price (c/kWh) ", 0, 100, 5),
         sliderInput("t0_Q_pv", "Initial solar PV installed base ('000s)", 1, 1000, 500),
@@ -55,16 +58,16 @@ ui <- fluidPage(
         sliderInput("t0_IND_GWh", "Initial total Industrial sector demand (GWh)", 0, 100, 7),
         sliderInput("t0_P_ICE", "Initial ICE total cost of ownership ($/month)", 0, 1000, 312, step = 10),
         hr(),
-        sliderInput("E_house", "Demand elasticity w.r.t. housing", 0, 1, 0.1, step = 0.01),
-        sliderInput("E_pv", "Grid price elasticity for solar PV w.r.t. solar PV installations", -1, 1, 0.01, step = 0.01),
-        sliderInput("E_ev", "Demand elasticity w.r.t. electric vehicles", 0, 1, 0.1),
-        sliderInput("E_price", "Demand elasticity w.r.t. the retail electricity price", -1, 0, -0.1, step = 0.01),
-        sliderInput("E_gsp", "Demand elasticity w.r.t. economic output", 0, 1, 0.1, step = 0.01),
-        hr(),
+        # sliderInput("E_house", "Demand elasticity w.r.t. housing", 0, 1, 0.1, step = 0.01),
+        # sliderInput("E_pv", "Grid price elasticity for solar PV w.r.t. solar PV installations", -1, 1, 0.01, step = 0.01),
+        # sliderInput("E_ev", "Demand elasticity w.r.t. electric vehicles", 0, 1, 0.1),
+        # sliderInput("E_price", "Demand elasticity w.r.t. the retail electricity price", -1, 0, -0.1, step = 0.01),
+        # sliderInput("E_gsp", "Demand elasticity w.r.t. economic output", 0, 1, 0.1, step = 0.01),
+        # hr(),
         sliderInput("t0_household_occupancy", "Average persons per household", 0, 25, 2.6),
         sliderInput("t0_cars_per_house", "Average cars per household", 0, 5, 2.6, step = 0.1),
         sliderInput("tN_pv_pen_ratio", "Eventual ratio of homes with solar PV to total homes", 0, 1, 0.8),
-        # sliderInput("tN_ev_pen_ratio", "Eventual ratio of homes with EVs to total homes", 0, 1, 1),
+        
         sliderInput("forecast_horizon", "Forecast horizon (years)", 5, 100, 50)
       ),
       
@@ -85,7 +88,7 @@ server <- function(input, output) {
 
   
  m <- reactive({  # create a dataframe containing naive forecasts for each demand driver
-   growth <- matrix(0, nrow=1, ncol=11)
+   growth <- matrix(0, nrow=1, ncol=12)
    
    growth[1,1] <- (input$gr_pop)/100+1
    growth[1,2] <- (input$gr_P_pv)/100+1     # this now relates to price, not quantity
@@ -98,8 +101,9 @@ server <- function(input, output) {
    growth[1,9]<- input$gr_COM/100+1
    growth[1,10]<- input$gr_IND/100+1
    growth[1,11]<- input$gr_P_ICE/100+1
+   growth[1,12]<- input$gr_Q_vehicles/100+1
    
-   base <- matrix(0, nrow=1, ncol=11)
+   base <- matrix(0, nrow=1, ncol=12)
    
    base[1,1] <- input$t0_pop
    base[1,2] <- input$t0_P_pv/100              
@@ -112,6 +116,7 @@ server <- function(input, output) {
    base[1,9] <- input$t0_COM_GWh
    base[1,10]<- input$t0_IND_GWh
    base[1,11]<- input$t0_P_ICE
+   base[1,12]<- input$t0_Q_vehicles
    
    m <- matrix(1, nrow = input$forecast_horizon, ncol = ncol(base))
    m[1,] <- base
@@ -119,8 +124,8 @@ server <- function(input, output) {
      m[i,] <-  m[i-1,] * growth
    }
    m <- data.frame("Index" = seq.int( nrow(m) ), m, "P_grid_pv" = m[,4]/m[,2], "P_EV_ICEV" = m[,3]/m[,11])
-   #                1       2      3       4       5         6      7         8        9        10        11         12         13           14
-   names(m) <- c("Index", "pop", "P_PV", "P_EV", "P_grid", "gsp", "pv_sc", "pv_cap", "ADMD", "COM_GWh", "IND_GWh", "P_ICE", "P_grid_pv", "P_EV_ICEV")
+   #                1       2      3       4       5         6      7         8        9        10        11         12         13           14            15
+   names(m) <- c("Index", "pop", "P_PV", "P_EV", "P_grid", "gsp", "pv_sc", "pv_cap", "ADMD", "COM_GWh", "IND_GWh", "P_ICE", "Q_vehicles", "P_grid_pv", "P_EV_ICEV")
    
    return(m)
  }) 
@@ -184,12 +189,12 @@ server <- function(input, output) {
  
  # forecast the quantity of electric vehicles based on relative total cost of ownership of ICEVs to EVs
  Q_EV <- reactive({
-   m <- m()
+   m <- data.frame ( m() )
    
    c = 1 # represents the steady state market share of EVs in total vehicles
    p <- m$P_ICE / m$P_EV        # relative price of ICE to EVs
    p0 = m$P_ICE[1] / m$P_EV[1]  # initial price ratio of ICEVs to EVs 
-   ev <- logistic( c = c, p = p, alpha = 0.5, p0 = p0 ) * Q_house() # logistic function calculates the share of EVs to ICE vehicles
+   ev <- logistic( c = c, p = p, alpha = 0.5, p0 = p0 ) * m$Q_vehicles # logistic function calculates the share of EVs to ICE vehicles
    return(ev)
    
  })
@@ -254,7 +259,7 @@ server <- function(input, output) {
     P_grid_PV <- ggplot(demand_drivers(), aes(x=Index, y=P_grid_pv)) + geom_line() + ggtitle("Relative grid price to solar PV") + xlab("Forecast timeframe") + ylab("Index")
 
     Q_EV <- ggplot(demand_drivers(), aes(x=Index, y=Q_EV)) + geom_line() + ggtitle("Electric vehicles (EVs)") + xlab("Forecast timeframe") + ylab("Vehicles (mill.)")
-    P_EV_ICEV <- ggplot(demand_drivers(), aes(x=Index, y=P_EV)) + geom_line() + ggtitle("Total Cost of Ownership: EVs to ICEVs") + xlab("Forecast timeframe") + ylab("Index")
+    P_EV_ICEV <- ggplot(demand_drivers(), aes(x=Index, y=P_EV_ICEV)) + geom_line() + ggtitle("Total Cost of Ownership: EVs to ICEVs") + xlab("Forecast timeframe") + ylab("Index")
     
     return( plot_grid(gsp, P_grid, P_PV, P_grid_PV, house, pv, Q_EV, P_EV_ICEV,  ncol = 2) )
 
@@ -263,4 +268,6 @@ server <- function(input, output) {
 
 # Run the application 
 shinyApp(ui = ui, server = server)
+
+
 
