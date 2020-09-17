@@ -1,0 +1,67 @@
+
+
+
+
+# Objective: calculate an array of average cost
+
+averageCost2 = function(GWh_1 = c(50, 300),
+                        dataPoints = 50, initialPrice = 0.28) {
+  
+  GWh_ <- GWh_1 # Distributed electricity (GWh)
+  CU_ <-
+    seq(7762, 17217, length.out = dataPoints)  # CU: Number of customers
+  AS_ <-
+    seq(1130, 5995, length.out = dataPoints) # Size of service territory (ha)
+  w_L_ <-
+    seq(77109, 114680, length.out = dataPoints) # labour price
+  w_K_ <-
+    seq(66.3, 122, length.out = dataPoints) # capital price
+
+  med_GWh <- median(GWh_)
+  med_CU <- median(CU_)
+  med_AS <- median(AS_)
+  med_w_L <- median(w_L_)
+  med_w_K <- median(w_K_)
+  
+  GWh <- GWh_ / med_GWh
+  CU <- CU_ / med_CU
+  AS <- AS_ / med_AS
+  w_L <- w_L_ / med_w_L
+  w_K <- w_K_ / med_w_K
+  
+  beta_0 <- -2.582
+  beta_GWh <- -1.016
+  beta_L <- 0.302
+  beta_CU <- 0.452
+  beta_AS <- 0.226
+  beta_GWh2 <- 0.657
+  beta_LL <- 0.081
+  beta_CU2 <- 0.975
+  beta_AS2 <- -0.059
+  beta_GWh_L <- -0.063
+  beta_GWh_CU <- -0.612
+  beta_GWh_AS <- 0.011
+  beta_CU_L <- 0.105
+  beta_AS_L <- -0.019
+  beta_CU_AS <- -0.028
+  
+  
+  # Calculate average cost (AC) - reactive
+  log_AC_w_K <-
+    (
+      beta_0 + beta_GWh * log(GWh) + beta_CU * log(CU) + beta_L * log(w_L / w_K) +
+        beta_AS * log(AS)
+      + 0.5 * beta_GWh2 * log(GWh) ^ 2 + 0.5 * beta_CU2 * log(CU) ^
+        2 + 0.5 * beta_LL * log(w_L / w_K) ^ 2 + 0.5 * beta_AS2 * log(AS) ^ 2
+      + beta_GWh_CU * log(GWh) * log(CU) + beta_GWh_L * log(GWh) *
+        log(w_L / w_K) + beta_GWh_AS * log(GWh) * log(AS)
+      + beta_CU_L * log(CU) * log(w_L / w_K) + beta_CU_AS * log(CU) *
+        log(AS) + beta_AS_L * log(AS) * log(w_L / w_K)
+    ) + log(initialPrice)
+  
+  
+  AC <- exp(log_AC_w_K)
+  
+
+  return(AC*10)
+}
