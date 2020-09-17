@@ -9,4 +9,4 @@ A simple model that generates scenario based projections (aka forecasts) for gri
 - ~~Make solar PV and EV demand a function of the grid-delivered electricity price.~~
 - ~~Add commercial and industrial demand for electricity.~~
 - Add ability to impose shocks on input variables after the initial time period.
-- Integrate with a translog cost function to drive the price of electricity, taking number of houses and average demand per house as inputs.
+- ~~Integrate with a translog cost function to drive the price of electricity, taking number of houses and average demand per house as inputs.~~
